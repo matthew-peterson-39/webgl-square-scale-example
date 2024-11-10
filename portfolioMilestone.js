@@ -24,6 +24,7 @@ document.getElementById("phiSlider").addEventListener("input", (e) => {
     phi = parseFloat(e.target.value);
 });
 
+//Global Variables
 // WebGL context and canvas initialization
 const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl");
@@ -36,52 +37,45 @@ let phi = Math.PI/2; // Polar angle from the y-axis (radians)
 // Animation state flag
 let isAnimating = true;
 
-/**
- * Vertex shader program to apply 3D transformations to each vertex of the cube.
- * 
- * - 'aPosition' is the input attribute representing the position of each vertex in 3D space.
- * - 'uModelViewMatrix' and 'uProjectionMatrix' are uniform matrices that transform the cube:
- *    - 'uModelViewMatrix' positions and orients the cube within the 3D scene.
- *    - 'uProjectionMatrix' sets up perspective, making objects appear smaller as they move farther away.
- * 
- * In the main function, 'gl_Position' is calculated, which tells WebGL where each vertex should appear on the screen.
- * This transforms each vertex to create the final 3D perspective view of the cube.
- */
+// Global variables (add with your other globals)
+let startTime = Date.now();
+//End Global Variables
+
 const vertexShaderSource = `
     attribute vec3 aPosition;
     uniform mat4 uModelViewMatrix;
     uniform mat4 uProjectionMatrix;
+    
+    varying vec3 vPosition;
+    
     void main() {
-    gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+        vPosition = aPosition;
+        gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
     }
 `;
 
-/**
- * Fragment shader to set the color of the cube.
- * 
- * - 'uColor' is a uniform variable that controls the color of the cube.
- * - 'gl_FragColor' sets the color of each pixel on the cube's surface to 'uColor'.
- * 
- * This shader applies a uniform color across the entire cube and allows smooth color changes over time.
- */
 const fragmentShaderSource = `
     precision mediump float;
     uniform vec4 uColor;
+    uniform float uTime;
+    
+    varying vec3 vPosition;
+    
     void main() {
-    gl_FragColor = uColor;
+        vec3 color = vec3(
+            sin(uTime + vPosition.x) * 0.5 + 0.5,
+            cos(uTime + vPosition.y) * 0.5 + 0.5,
+            sin(uTime + vPosition.z) * 0.5 + 0.5
+        );
+        gl_FragColor = vec4(mix(uColor.rgb, color, 0.3), 1.0);
     }
 `;
 
-/** 
-* Fragment shader to set the color of the cube's edges to black.
-*
-* - 'gl_FragColor' sets each pixel's color to black (0.0, 0.0, 0.0, 1.0).
-*
-* This shader is used specifically for drawing the cube's edges in black for contrast.
-*/
 const fragmentShaderSourceBlack = `
+    precision mediump float;
+    
     void main() {
-    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Black color for edges
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
     }
 `;
 
@@ -137,9 +131,9 @@ function compileShader(gl, source, type) {
     return shader;
 }
 
-// Initialize shader programs for the cube faces and edges
-const shaderProgram = initShaderProgram(gl, vertexShaderSource, fragmentShaderSource); // Color shader for faces
-const shaderProgramEdges = initShaderProgram(gl, vertexShaderSource, fragmentShaderSourceBlack); // Black shader for edges
+// Initialize shader programs
+const shaderProgram = initShaderProgram(gl, vertexShaderSource, fragmentShaderSource);
+const shaderProgramEdges = initShaderProgram(gl, vertexShaderSource, fragmentShaderSourceBlack);
 
 // Define the vertices for a cube in 3D space
 const vertices = new Float32Array([
@@ -324,66 +318,72 @@ let animationPaused = false;
 */
 function render() {
     if (animationPaused) return;
-
+ 
     // Clear the canvas and enable depth testing for 3D rendering
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
-
+ 
+    // Calculate time for shader animations
+    const currentTime = (Date.now() - startTime) * 0.001; // Convert to seconds
+ 
     // Get the camera view matrix
     const cameraMatrix = updateModelViewMatrix();
-
+ 
     // Loop through each cube and apply transformations and colors
     for (let i = 0; i < positions.length; i++) {
         const color = colors[i];
         updateColorTransition(color);
-
+ 
         gl.useProgram(shaderProgram);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
         initAttributes(gl, shaderProgram);
-
+ 
         // Create model matrix for cube positioning and rotation
         const modelMatrix = mat4.create();
         mat4.translate(modelMatrix, modelMatrix, [positions[i].x, positions[i].y, positions[i].z]);
         mat4.scale(modelMatrix, modelMatrix, [0.2, 0.2, 0.2]);
         mat4.rotateY(modelMatrix, modelMatrix, angles[i]);
         mat4.rotateX(modelMatrix, modelMatrix, angles[i] * 0.5);
-
+ 
         // Combine camera matrix with model matrix
         const modelViewMatrix = mat4.create();
         mat4.multiply(modelViewMatrix, cameraMatrix, modelMatrix);
-
+ 
         // Update rotation angle and position based on speed and direction
         angles[i] += speeds[i];
         positions[i].x += directions[i].dx;
         positions[i].y += directions[i].dy;
         positions[i].z += directions[i].dz;
-
+ 
         // Bounce cubes off boundaries by reversing direction
         if (positions[i].x > boundary.x || positions[i].x < -boundary.x) directions[i].dx *= -1;
         if (positions[i].y > boundary.y || positions[i].y < -boundary.y) directions[i].dy *= -1;
         if (positions[i].z > -0.5 || positions[i].z < boundary.z) directions[i].dz *= -1;
-
+ 
+        // Pass time uniform to shader
+        gl.uniform1f(gl.getUniformLocation(shaderProgram, "uTime"), currentTime);
+ 
         // Set the transformation and color uniforms for the face shader
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uModelViewMatrix"), false, modelViewMatrix);
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uProjectionMatrix"), false, projectionMatrix);
         gl.uniform4fv(gl.getUniformLocation(shaderProgram, "uColor"), color.current);
-
+ 
         // Draw the cube faces
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.faceIndexBuffer);
         gl.drawElements(gl.TRIANGLES, faceIndices.length, gl.UNSIGNED_SHORT, 0);
-
+ 
         // Set and draw the cube edges using the edge shader program
         gl.useProgram(shaderProgramEdges);
         initAttributes(gl, shaderProgramEdges);
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uModelViewMatrix"), false, modelViewMatrix);
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uProjectionMatrix"), false, projectionMatrix);
-
+ 
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.edgeIndexBuffer);
         gl.drawElements(gl.LINES, edgeIndices.length, gl.UNSIGNED_SHORT, 0);
     }
-
+ 
     requestAnimationFrame(render);
-}
+ }
 
 render();
