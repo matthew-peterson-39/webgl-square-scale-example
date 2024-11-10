@@ -313,68 +313,76 @@ mat4.perspective(projectionMatrix, Math.PI / 4, canvas.width / canvas.height, 0.
 let animationPaused = false;
 
 /**
- * Renders the scene, updating transformations and drawing each cube.
- * 
- * - Clears the canvas and enables depth testing.
- * - Updates each cube’s position, rotation, and color.
- * - Applies transformations and uniforms, then draws each cube face and edge.
- * - Requests the next frame to continuously animate the scene unless paused.
- */
+* Renders the scene, updating camera position, transformations, and drawing each cube.
+*
+* - Clears the canvas and enables depth testing for 3D rendering.
+* - Calculates camera position using polar coordinates from user input.
+* - Updates each cube's position, rotation, and color transitions.
+* - Combines camera and model matrices for proper 3D perspective.
+* - Applies transformations and uniforms to render cube faces and edges.
+* - Maintains continuous animation through requestAnimationFrame unless paused.
+*/
 function render() {
-    if (animationPaused) return;  // Exit if animation is paused
+    if (animationPaused) return;
 
     // Clear the canvas and enable depth testing for 3D rendering
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
 
+    // Get the camera view matrix
+    const cameraMatrix = updateModelViewMatrix();
+
     // Loop through each cube and apply transformations and colors
     for (let i = 0; i < positions.length; i++) {
-    const color = colors[i];
-    updateColorTransition(color);  // Smoothly transition colors
+        const color = colors[i];
+        updateColorTransition(color);
 
-    gl.useProgram(shaderProgram);
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
-    initAttributes(gl, shaderProgram);  // Initialize vertex attributes
+        gl.useProgram(shaderProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
+        initAttributes(gl, shaderProgram);
 
-    // Create and apply model-view transformations for each cube
-    const modelViewMatrix = mat4.create();
-    mat4.translate(modelViewMatrix, modelViewMatrix, [positions[i].x, positions[i].y, positions[i].z]);
-    mat4.scale(modelViewMatrix, modelViewMatrix, [0.2, 0.2, 0.2]);
-    mat4.rotateY(modelViewMatrix, modelViewMatrix, angles[i]);
-    mat4.rotateX(modelViewMatrix, modelViewMatrix, angles[i] * 0.5);
+        // Create model matrix for cube positioning and rotation
+        const modelMatrix = mat4.create();
+        mat4.translate(modelMatrix, modelMatrix, [positions[i].x, positions[i].y, positions[i].z]);
+        mat4.scale(modelMatrix, modelMatrix, [0.2, 0.2, 0.2]);
+        mat4.rotateY(modelMatrix, modelMatrix, angles[i]);
+        mat4.rotateX(modelMatrix, modelMatrix, angles[i] * 0.5);
 
-    // Update rotation angle and position based on speed and direction
-    angles[i] += speeds[i];
-    positions[i].x += directions[i].dx;
-    positions[i].y += directions[i].dy;
-    positions[i].z += directions[i].dz;
+        // Combine camera matrix with model matrix
+        const modelViewMatrix = mat4.create();
+        mat4.multiply(modelViewMatrix, cameraMatrix, modelMatrix);
 
-    // Bounce cubes off boundaries by reversing direction
-    if (positions[i].x > boundary.x || positions[i].x < -boundary.x) directions[i].dx *= -1;
-    if (positions[i].y > boundary.y || positions[i].y < -boundary.y) directions[i].dy *= -1;
-    if (positions[i].z > -0.5 || positions[i].z < boundary.z) directions[i].dz *= -1;
+        // Update rotation angle and position based on speed and direction
+        angles[i] += speeds[i];
+        positions[i].x += directions[i].dx;
+        positions[i].y += directions[i].dy;
+        positions[i].z += directions[i].dz;
 
-    // Set the transformation and color uniforms for the face shader
-    gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uModelViewMatrix"), false, modelViewMatrix);
-    gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uProjectionMatrix"), false, projectionMatrix);
-    gl.uniform4fv(gl.getUniformLocation(shaderProgram, "uColor"), color.current);
+        // Bounce cubes off boundaries by reversing direction
+        if (positions[i].x > boundary.x || positions[i].x < -boundary.x) directions[i].dx *= -1;
+        if (positions[i].y > boundary.y || positions[i].y < -boundary.y) directions[i].dy *= -1;
+        if (positions[i].z > -0.5 || positions[i].z < boundary.z) directions[i].dz *= -1;
 
-    // Draw the cube faces
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.faceIndexBuffer);
-    gl.drawElements(gl.TRIANGLES, faceIndices.length, gl.UNSIGNED_SHORT, 0);
+        // Set the transformation and color uniforms for the face shader
+        gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uModelViewMatrix"), false, modelViewMatrix);
+        gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uProjectionMatrix"), false, projectionMatrix);
+        gl.uniform4fv(gl.getUniformLocation(shaderProgram, "uColor"), color.current);
 
-    // Set and draw the cube edges using the edge shader program
-    gl.useProgram(shaderProgramEdges);
-    initAttributes(gl, shaderProgramEdges);
-    gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uModelViewMatrix"), false, modelViewMatrix);
-    gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uProjectionMatrix"), false, projectionMatrix);
+        // Draw the cube faces
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.faceIndexBuffer);
+        gl.drawElements(gl.TRIANGLES, faceIndices.length, gl.UNSIGNED_SHORT, 0);
 
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.edgeIndexBuffer);
-    gl.drawElements(gl.LINES, edgeIndices.length, gl.UNSIGNED_SHORT, 0);
+        // Set and draw the cube edges using the edge shader program
+        gl.useProgram(shaderProgramEdges);
+        initAttributes(gl, shaderProgramEdges);
+        gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uModelViewMatrix"), false, modelViewMatrix);
+        gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uProjectionMatrix"), false, projectionMatrix);
+
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.edgeIndexBuffer);
+        gl.drawElements(gl.LINES, edgeIndices.length, gl.UNSIGNED_SHORT, 0);
     }
 
-    // Request the next animation frame
     requestAnimationFrame(render);
 }
 
