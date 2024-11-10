@@ -11,6 +11,19 @@ document.getElementById("colorSyncButton").onclick = () => {
     });
 };
 
+// Event listeners for camera control sliders
+document.getElementById("radiusSlider").addEventListener("input", (e) => {
+    radius = parseFloat(e.target.value);
+});
+
+document.getElementById("thetaSlider").addEventListener("input", (e) => {
+    theta = parseFloat(e.target.value);
+});
+
+document.getElementById("phiSlider").addEventListener("input", (e) => {
+    phi = parseFloat(e.target.value);
+});
+
 // WebGL context and canvas initialization
 const canvas = document.getElementById("glCanvas");
 const gl = canvas.getContext("webgl");
