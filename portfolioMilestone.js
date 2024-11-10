@@ -1,3 +1,4 @@
+// Event listeners for pause, color sync, and camera control sliders
 document.getElementById("playPauseButton").onclick = () => {
     animationPaused = !animationPaused;
     if (!animationPaused) render();
@@ -11,7 +12,6 @@ document.getElementById("colorSyncButton").onclick = () => {
     });
 };
 
-// Event listeners for camera control sliders
 document.getElementById("radiusSlider").addEventListener("input", (e) => {
     radius = parseFloat(e.target.value);
 });
@@ -282,7 +282,27 @@ function initAttributes(gl, shaderProgram) {
     const positionLocation = gl.getAttribLocation(shaderProgram, "aPosition");
     gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 0, 0);
     gl.enableVertexAttribArray(positionLocation);
-}  
+}
+
+// Function to update camera view matrix
+function updateModelViewMatrix() {
+    const modelViewMatrix = mat4.create();
+    
+    // Convert polar coordinates to Cartesian for camera position
+    const x = radius * Math.sin(phi) * Math.cos(theta);
+    const y = radius * Math.cos(phi);
+    const z = radius * Math.sin(phi) * Math.sin(theta);
+
+    // Position camera and look at origin
+    mat4.lookAt(
+        modelViewMatrix,
+        [x, y, z],    // Camera position
+        [0, 0, 0],    // Target (origin)
+        [0, 1, 0]     // Up vector
+    );
+
+    return modelViewMatrix;
+}
 
 // Create the projection matrix for setting up the 3D perspective
 // Defined globally for use by render() without passing as arg.
