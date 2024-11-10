@@ -41,6 +41,74 @@ let isAnimating = true;
 let startTime = Date.now();
 //End Global Variables
 
+
+// Helper Functions
+// Collision detection function
+function checkCollisions(cubeIndex) {
+    const cube = positions[cubeIndex];
+    const cubeSize = 0.2; // Based on your scale factor
+    
+    for (let i = 0; i < positions.length; i++) {
+        if (i !== cubeIndex) {
+            const other = positions[i];
+            
+            // Simple box collision check
+            const collision = Math.abs(cube.x - other.x) < cubeSize &&
+                            Math.abs(cube.y - other.y) < cubeSize &&
+                            Math.abs(cube.z - other.z) < cubeSize;
+            
+            if (collision && !cube.hasSplit) {
+                splitCube(cubeIndex);
+                cube.hasSplit = true;
+                return true;
+            } else if (collision) {
+                // Bounce logic for already split cubes
+                directions[cubeIndex].dx *= -1;
+                directions[cubeIndex].dy *= -1;
+                directions[cubeIndex].dz *= -1;
+            }
+        }
+    }
+    return false;
+}
+
+// Cube splitting function
+function splitCube(index) {
+    const originalPos = positions[index];
+    const smallScale = 0.1; // Half the original size
+    
+    // Create 8 smaller cubes
+    for (let i = 0; i < 8; i++) {
+        const xOffset = (i & 1) ? smallScale : -smallScale;
+        const yOffset = (i & 2) ? smallScale : -smallScale;
+        const zOffset = (i & 4) ? smallScale : -smallScale;
+        
+        positions.push({
+            x: originalPos.x + xOffset,
+            y: originalPos.y + yOffset,
+            z: originalPos.z + zOffset,
+            hasSplit: true
+        });
+        
+        // Add corresponding properties for new cubes
+        angles.push(angles[index]);
+        speeds.push(speeds[index] * 1.2);
+        colors.push({
+            current: [...colors[index].current],
+            target: getRandomColor(),
+            step: 0
+        });
+        
+        // Add random directions for split pieces
+        directions.push({
+            dx: (Math.random() - 0.5) * 0.01,
+            dy: (Math.random() - 0.5) * 0.01,
+            dz: (Math.random() - 0.5) * 0.01
+        });
+    }
+}
+// End Helper Functions
+
 const vertexShaderSource = `
     attribute vec3 aPosition;
     uniform mat4 uModelViewMatrix;
@@ -325,7 +393,7 @@ function render() {
     gl.enable(gl.DEPTH_TEST);
  
     // Calculate time for shader animations
-    const currentTime = (Date.now() - startTime) * 0.001; // Convert to seconds
+    const currentTime = (Date.now() - startTime) * 0.001;
  
     // Get the camera view matrix
     const cameraMatrix = updateModelViewMatrix();
@@ -350,6 +418,9 @@ function render() {
         const modelViewMatrix = mat4.create();
         mat4.multiply(modelViewMatrix, cameraMatrix, modelMatrix);
  
+        // Check for collisions before updating position
+        checkCollisions(i);
+ 
         // Update rotation angle and position based on speed and direction
         angles[i] += speeds[i];
         positions[i].x += directions[i].dx;
@@ -362,7 +433,10 @@ function render() {
         if (positions[i].z > -0.5 || positions[i].z < boundary.z) directions[i].dz *= -1;
  
         // Pass time uniform to shader
-        gl.uniform1f(gl.getUniformLocation(shaderProgram, "uTime"), currentTime);
+        const timeLocation = gl.getUniformLocation(shaderProgram, "uTime");
+        if (timeLocation) {
+            gl.uniform1f(timeLocation, currentTime);
+        }
  
         // Set the transformation and color uniforms for the face shader
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uModelViewMatrix"), false, modelViewMatrix);
