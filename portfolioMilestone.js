@@ -172,12 +172,12 @@ const speeds = [0.01, 0.02, 0.015, 0.017, 0.018, 0.016];
 
 // Define initial positions for each cube in 3D space
 const positions = [
-    { x: -0.5, y:  0.0, z: -2.0 },
-    { x:  0.0, y:  0.0, z: -2.5 },
-    { x:  0.5, y:  0.0, z: -3.0 },
-    { x: -1.0, y:  0.5, z: -2.5 },
-    { x:  1.0, y: -0.5, z: -2.5 },
-    { x:  0.0, y:  1.0, z: -3.5 }
+    { x: -0.5, y:  0.0, z: -2.0, hasSplit: false },
+    { x:  0.0, y:  0.0, z: -2.5, hasSplit: false },
+    { x:  0.5, y:  0.0, z: -3.0, hasSplit: false },
+    { x: -1.0, y:  0.5, z: -2.5, hasSplit: false },
+    { x:  1.0, y: -0.5, z: -2.5, hasSplit: false },
+    { x:  0.0, y:  1.0, z: -3.5, hasSplit: false }
 ];
 
 // Define movement directions for each cube in x, y, and z axes
