@@ -39,6 +39,29 @@ let isAnimating = true;
 
 // Global variables (add with your other globals)
 let startTime = Date.now();
+
+// Define grid parameters and create vertices/indices
+const gridSize = 10;  // Number of lines in each direction
+const gridStep = 0.5; // Space between lines
+const gridVertices = [];
+const gridIndices = [];
+
+// Create grid vertices and indices
+let index = 0;
+for (let i = -gridSize; i <= gridSize; i++) {
+    // X-axis lines
+    gridVertices.push(i * gridStep, 0, -gridSize * gridStep);  // Start point
+    gridVertices.push(i * gridStep, 0, gridSize * gridStep);   // End point
+    gridIndices.push(index, index + 1);
+    index += 2;
+
+    // Z-axis lines
+    gridVertices.push(-gridSize * gridStep, 0, i * gridStep);  // Start point
+    gridVertices.push(gridSize * gridStep, 0, i * gridStep);   // End point
+    gridIndices.push(index, index + 1);
+    index += 2;
+}
+
 //End Global Variables
 
 
@@ -327,7 +350,22 @@ function setupBuffers(gl) {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, edgeIndexBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, edgeIndices, gl.STATIC_DRAW);
 
-    return { vertexBuffer, faceIndexBuffer, edgeIndexBuffer };
+    // Add grid buffers
+    const gridVertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, gridVertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(gridVertices), gl.STATIC_DRAW);
+
+    const gridIndexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gridIndexBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(gridIndices), gl.STATIC_DRAW);
+
+    return { 
+        vertexBuffer, 
+        faceIndexBuffer, 
+        edgeIndexBuffer,
+        gridVertexBuffer,
+        gridIndexBuffer 
+    };
 }
 
 /**
@@ -369,7 +407,7 @@ function updateModelViewMatrix() {
 // Create the projection matrix for setting up the 3D perspective
 // Defined globally for use by render() without passing as arg.
 const projectionMatrix = mat4.create();
-mat4.perspective(projectionMatrix, Math.PI / 4, canvas.width / canvas.height, 0.1, 10.0);
+mat4.perspective(projectionMatrix, Math.PI / 4, canvas.width / canvas.height, 0.1, 50.0);
 
 // Variable to control whether the animation is paused
 let animationPaused = false;
@@ -386,78 +424,91 @@ let animationPaused = false;
 */
 function render() {
     if (animationPaused) return;
- 
+
     // Clear the canvas and enable depth testing for 3D rendering
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);
- 
+
     // Calculate time for shader animations
     const currentTime = (Date.now() - startTime) * 0.001;
- 
+
     // Get the camera view matrix
     const cameraMatrix = updateModelViewMatrix();
- 
+
+    // Draw grid first
+    gl.useProgram(shaderProgramEdges);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.gridVertexBuffer);
+    initAttributes(gl, shaderProgramEdges);
+
+    const gridModelViewMatrix = mat4.create();
+    mat4.multiply(gridModelViewMatrix, cameraMatrix, mat4.create());
+
+    gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uModelViewMatrix"), false, gridModelViewMatrix);
+    gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uProjectionMatrix"), false, projectionMatrix);
+
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.gridIndexBuffer);
+    gl.drawElements(gl.LINES, gridIndices.length, gl.UNSIGNED_SHORT, 0);
+
     // Loop through each cube and apply transformations and colors
     for (let i = 0; i < positions.length; i++) {
         const color = colors[i];
         updateColorTransition(color);
- 
+
         gl.useProgram(shaderProgram);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
         initAttributes(gl, shaderProgram);
- 
+
         // Create model matrix for cube positioning and rotation
         const modelMatrix = mat4.create();
         mat4.translate(modelMatrix, modelMatrix, [positions[i].x, positions[i].y, positions[i].z]);
         mat4.scale(modelMatrix, modelMatrix, [0.2, 0.2, 0.2]);
         mat4.rotateY(modelMatrix, modelMatrix, angles[i]);
         mat4.rotateX(modelMatrix, modelMatrix, angles[i] * 0.5);
- 
+
         // Combine camera matrix with model matrix
         const modelViewMatrix = mat4.create();
         mat4.multiply(modelViewMatrix, cameraMatrix, modelMatrix);
- 
+
         // Check for collisions before updating position
         checkCollisions(i);
- 
+
         // Update rotation angle and position based on speed and direction
         angles[i] += speeds[i];
         positions[i].x += directions[i].dx;
         positions[i].y += directions[i].dy;
         positions[i].z += directions[i].dz;
- 
+
         // Bounce cubes off boundaries by reversing direction
         if (positions[i].x > boundary.x || positions[i].x < -boundary.x) directions[i].dx *= -1;
         if (positions[i].y > boundary.y || positions[i].y < -boundary.y) directions[i].dy *= -1;
         if (positions[i].z > -0.5 || positions[i].z < boundary.z) directions[i].dz *= -1;
- 
+
         // Pass time uniform to shader
         const timeLocation = gl.getUniformLocation(shaderProgram, "uTime");
         if (timeLocation) {
             gl.uniform1f(timeLocation, currentTime);
         }
- 
+
         // Set the transformation and color uniforms for the face shader
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uModelViewMatrix"), false, modelViewMatrix);
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgram, "uProjectionMatrix"), false, projectionMatrix);
         gl.uniform4fv(gl.getUniformLocation(shaderProgram, "uColor"), color.current);
- 
+
         // Draw the cube faces
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.faceIndexBuffer);
         gl.drawElements(gl.TRIANGLES, faceIndices.length, gl.UNSIGNED_SHORT, 0);
- 
+
         // Set and draw the cube edges using the edge shader program
         gl.useProgram(shaderProgramEdges);
         initAttributes(gl, shaderProgramEdges);
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uModelViewMatrix"), false, modelViewMatrix);
         gl.uniformMatrix4fv(gl.getUniformLocation(shaderProgramEdges, "uProjectionMatrix"), false, projectionMatrix);
- 
+
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.edgeIndexBuffer);
         gl.drawElements(gl.LINES, edgeIndices.length, gl.UNSIGNED_SHORT, 0);
     }
- 
-    requestAnimationFrame(render);
- }
 
+    requestAnimationFrame(render);
+}
 render();
