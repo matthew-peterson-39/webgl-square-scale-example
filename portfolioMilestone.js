@@ -108,46 +108,31 @@ for (let i = -gridSize; i <= gridSize; i++) {
  * }
  */
 function checkCollisions(cubeIndex) {
-    // Get reference to current cube's position
     const cube = positions[cubeIndex];
+    const cubeSize = 0.2;
     
-    // Define collision boundary size
-    // 0.2 represents the effective radius of collision detection
-    const cubeSize = 0.2; 
+    const candidates = spatialGrid.getPotentialCollisions(cubeIndex);
     
-    // Check against all other cubes
-    for (let i = 0; i < positions.length; i++) {
-        // Skip self-collision check
-        if (i !== cubeIndex) {
-            const other = positions[i];
-            
-            // Perform AABB collision test on all axes
-            // A collision occurs if the distance between cubes
-            // is less than cubeSize on all three axes
-            const collision = 
-                Math.abs(cube.x - other.x) < cubeSize &&  // X-axis separation
-                Math.abs(cube.y - other.y) < cubeSize &&  // Y-axis separation
-                Math.abs(cube.z - other.z) < cubeSize;    // Z-axis separation
-            
-            if (collision) {
-                // Handle collision based on cube state
-                if (!cube.hasSplit) {
-                    // First-time collision: trigger subdivision
-                    splitCube(cubeIndex);
-                    cube.hasSplit = true;
-                    return true;  // Indicate subdivision occurred
-                } else {
-                    // Subsequent collisions: bounce response
-                    // Reverse all movement directions
-                    directions[cubeIndex].dx *= -1;  // Reverse X velocity
-                    directions[cubeIndex].dy *= -1;  // Reverse Y velocity
-                    directions[cubeIndex].dz *= -1;  // Reverse Z velocity
-                }
+    for (const i of candidates) {
+        const other = positions[i];
+        
+        const collision = 
+            Math.abs(cube.x - other.x) < cubeSize &&
+            Math.abs(cube.y - other.y) < cubeSize &&
+            Math.abs(cube.z - other.z) < cubeSize;
+        
+        if (collision) {
+            if (!cube.hasSplit) {
+                splitCube(cubeIndex);
+                cube.hasSplit = true;
+                return true;
+            } else {
+                directions[cubeIndex].dx *= -1;
+                directions[cubeIndex].dy *= -1;
+                directions[cubeIndex].dz *= -1;
             }
         }
     }
-    
-    // No collision occurred
     return false;
 }
 
@@ -766,6 +751,59 @@ function setupBuffers(gl) {
     };
 }
 
+class SpatialGrid {
+    constructor(worldSize, cellSize) {
+        this.cellSize = cellSize;
+        this.gridSize = Math.ceil(worldSize * 2 / cellSize);
+        this.grid = new Array(this.gridSize * this.gridSize * this.gridSize).fill().map(() => []);
+    }
+
+    getGridIndex(x, y, z) {
+        const gridX = Math.floor((x + boundary.x) / this.cellSize);
+        const gridY = Math.floor((y + boundary.y) / this.cellSize);
+        const gridZ = Math.floor((z + Math.abs(boundary.z)) / this.cellSize);
+        return gridX + gridY * this.gridSize + gridZ * this.gridSize * this.gridSize;
+    }
+
+    updateGrid() {
+        this.grid.forEach(cell => cell.length = 0);
+        positions.forEach((pos, index) => {
+            const gridIndex = this.getGridIndex(pos.x, pos.y, pos.z);
+            if (gridIndex >= 0 && gridIndex < this.grid.length) {
+                this.grid[gridIndex].push(index);
+            }
+        });
+    }
+
+    getPotentialCollisions(cubeIndex) {
+        const pos = positions[cubeIndex];
+        const gridIndex = this.getGridIndex(pos.x, pos.y, pos.z);
+        const candidates = new Set();
+        
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dz = -1; dz <= 1; dz++) {
+                    const neighborIndex = gridIndex + 
+                        dx + 
+                        dy * this.gridSize + 
+                        dz * this.gridSize * this.gridSize;
+                    
+                    if (neighborIndex >= 0 && neighborIndex < this.grid.length) {
+                        this.grid[neighborIndex].forEach(idx => {
+                            if (idx !== cubeIndex) candidates.add(idx);
+                        });
+                    }
+                }
+            }
+        }
+        
+        return Array.from(candidates);
+    }
+}
+
+// Initialize spatial partitioning grid
+const spatialGrid = new SpatialGrid(Math.max(boundary.x, boundary.y, Math.abs(boundary.z)), 0.5);
+
 /**
  * Configures vertex attribute settings for shader position data.
  * This function sets up the connection between the vertex buffer data
@@ -944,6 +982,8 @@ let animationPaused = false;
 function render() {
     // Animation state check
     if (animationPaused) return;
+
+    spatialGrid.updateGrid();
 
     // ---- Stage 1: Frame Setup ----
     // Clear to white background and reset depth buffer
