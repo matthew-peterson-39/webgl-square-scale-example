@@ -185,10 +185,10 @@ function checkCollisions(cubeIndex) {
 function splitCube(index) {
     // Store original cube's position for reference
     const originalPos = positions[index];
-    const smallScale = 0.1; // Half-size of child cubes
+    const smallScale = 0.5; // Half-size of child cubes
     
     // Create 8 smaller cubes (2^3 octants)
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 1; i++) {
         // Use bit operations to determine offset signs
         // Bit 0 (i & 1): X axis offset
         // Bit 1 (i & 2): Y axis offset
@@ -412,6 +412,158 @@ const fragmentShaderSourceBlack = `
     }
 `;
 
+// Phong Vertex Shader
+const phongVertexShader = `
+    attribute vec3 aPosition;
+    attribute vec3 aNormal;
+    
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+    
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    
+    void main() {
+        vNormal = mat3(uModelViewMatrix) * aNormal;
+        vec4 position = uModelViewMatrix * vec4(aPosition, 1.0);
+        vPosition = position.xyz;
+        gl_Position = uProjectionMatrix * position;
+    }
+`;
+
+// Phong Fragment Shader
+const phongFragmentShader = `
+    precision mediump float;
+    
+    uniform vec4 uColor;
+    uniform vec3 uLightPosition;
+    
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    
+    void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 lightDir = normalize(uLightPosition - vPosition);
+        
+        float diff = max(dot(normal, lightDir), 0.0);
+        vec3 ambient = uColor.rgb * 0.3;
+        vec3 diffuse = uColor.rgb * diff * 0.7;
+        
+        gl_FragColor = vec4(ambient + diffuse, 1.0);
+    }
+`;
+
+// Toon Vertex Shader (similar to Phong)
+const toonVertexShader = `
+    attribute vec3 aPosition;
+    attribute vec3 aNormal;
+    
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+    
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    
+    void main() {
+        vNormal = mat3(uModelViewMatrix) * aNormal;
+        vec4 position = uModelViewMatrix * vec4(aPosition, 1.0);
+        vPosition = position.xyz;
+        gl_Position = uProjectionMatrix * position;
+    }
+`;
+
+// Toon Fragment Shader
+const toonFragmentShader = `
+    precision mediump float;
+    
+    uniform vec4 uColor;
+    uniform vec3 uLightPosition;
+    
+    varying vec3 vNormal;
+    varying vec3 vPosition;
+    
+    void main() {
+        vec3 normal = normalize(vNormal);
+        vec3 lightDir = normalize(uLightPosition - vPosition);
+        float intensity = dot(normal, lightDir);
+        
+        vec4 color;
+        if (intensity > 0.95) {
+            color = vec4(uColor.rgb, 1.0);
+        } else if (intensity > 0.5) {
+            color = vec4(uColor.rgb * 0.7, 1.0);
+        } else if (intensity > 0.25) {
+            color = vec4(uColor.rgb * 0.4, 1.0);
+        } else {
+            color = vec4(uColor.rgb * 0.2, 1.0);
+        }
+        
+        gl_FragColor = color;
+    }
+`;
+
+const wireframeVertexShader = `
+    attribute vec3 aPosition;
+    
+    uniform mat4 uModelViewMatrix;
+    uniform mat4 uProjectionMatrix;
+    
+    void main() {
+        gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(aPosition, 1.0);
+    }
+`;
+
+const wireframeFragmentShader = `
+    precision mediump float;
+    void main() {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    }
+`;
+
+// Vertex normals for the cube
+const normals = new Float32Array([
+    // Front face
+    0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,
+    0.0, 0.0, 1.0,
+    
+    // Back face
+    0.0, 0.0, -1.0,
+    0.0, 0.0, -1.0,
+    0.0, 0.0, -1.0,
+    0.0, 0.0, -1.0,
+    
+    // Top face
+    0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,
+    0.0, 1.0, 0.0,
+    
+    // Bottom face
+    0.0, -1.0, 0.0,
+    0.0, -1.0, 0.0,
+    0.0, -1.0, 0.0,
+    0.0, -1.0, 0.0,
+    
+    // Right face
+    1.0, 0.0, 0.0,
+    1.0, 0.0, 0.0,
+    1.0, 0.0, 0.0,
+    1.0, 0.0, 0.0,
+    
+    // Left face
+    -1.0, 0.0, 0.0,
+    -1.0, 0.0, 0.0,
+    -1.0, 0.0, 0.0,
+    -1.0, 0.0, 0.0
+]);
+
+// Create and populate normal buffer
+const normalBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, normals, gl.STATIC_DRAW);
+
 /**
  * Creates and initializes a WebGL shader program from vertex and fragment shader sources.
  * The shader program is essential for rendering as it controls how vertices are processed
@@ -547,12 +699,12 @@ const speeds = [0.01, 0.02, 0.015, 0.017, 0.018, 0.016];
 
 // Initial cube positions in 3D space
 const positions = [
-    { x: -0.5, y:  0.0, z: -2.0, hasSplit: false },
+    { x: 0.0, y:  0.0, z: 0.0, hasSplit: false },
     { x:  0.0, y:  0.0, z: -2.5, hasSplit: false },
     { x:  0.5, y:  0.0, z: -3.0, hasSplit: false },
     { x: -1.0, y:  0.5, z: -2.5, hasSplit: false },
-    { x:  1.0, y: -0.5, z: -2.5, hasSplit: false },
-    { x:  0.0, y:  1.0, z: -3.5, hasSplit: false }
+    { x:  0.0, y:  0.5, z:  0.5, hasSplit: false },
+    { x:  0.0, y:  0.0, z:  0.5, hasSplit: false }
 ];
 
 // Movement vectors for each cube
@@ -1006,6 +1158,146 @@ class ProjectionManager {
 // Set up perspective projection matrix
 const projectionManager = new ProjectionManager(gl, canvas);
 
+/**
+ * Manages multiple shader programs and handles switching between them.
+ * This class encapsulates shader program creation, compilation, and switching logic
+ * while maintaining clean separation of concerns.
+ */
+class ShaderManager {
+    constructor(gl) {
+        this.gl = gl;
+        this.currentProgram = null;
+        this.programs = new Map();
+        this.currentShaderType = 'default';
+        this.pendingShaderSwitch = false;
+        this.lightPosition = [5.0, 5.0, 5.0];
+        
+        this.initialize();
+    }
+
+    initialize() {
+        this.createShaderPrograms();
+        this.setupEventListeners();
+    }
+
+    createShaderPrograms() {
+        // Default shader (existing implementation)
+        this.programs.set('default', {
+            vertex: vertexShaderSource,
+            fragment: fragmentShaderSource,
+            program: initShaderProgram(this.gl, vertexShaderSource, fragmentShaderSource),
+            preserveColor: true,
+            setupAttributes: (program) => {
+                program.positionAttribute = this.gl.getAttribLocation(program, 'aPosition');
+            }
+        });
+
+        // Phong shader
+        const phongProgram = initShaderProgram(this.gl, phongVertexShader, phongFragmentShader);
+        this.programs.set('phong', {
+            program: phongProgram,
+            preserveColor: true,
+            needsLighting: true,
+            setupAttributes: (program) => {
+                program.positionAttribute = this.gl.getAttribLocation(program, 'aPosition');
+                program.normalAttribute = this.gl.getAttribLocation(program, 'aNormal');
+                program.lightPositionUniform = this.gl.getUniformLocation(program, 'uLightPosition');
+            }
+        });
+
+        // Toon shader
+        const toonProgram = initShaderProgram(this.gl, toonVertexShader, toonFragmentShader);
+        this.programs.set('toon', {
+            program: toonProgram,
+            preserveColor: true,
+            needsLighting: true,
+            setupAttributes: (program) => {
+                program.positionAttribute = this.gl.getAttribLocation(program, 'aPosition');
+                program.normalAttribute = this.gl.getAttribLocation(program, 'aNormal');
+                program.lightPositionUniform = this.gl.getUniformLocation(program, 'uLightPosition');
+            }
+        });
+
+        const wireframeProgram = initShaderProgram(this.gl, wireframeVertexShader, wireframeFragmentShader);
+        this.programs.set('wireframe', {
+            program: wireframeProgram,
+            preserveColor: false,
+            setupAttributes: (program) => {
+                program.positionAttribute = this.gl.getAttribLocation(program, 'aPosition');
+            }
+        });
+
+        // Initialize all programs
+        this.programs.forEach((shaderInfo, type) => {
+            if (shaderInfo.setupAttributes) {
+                shaderInfo.setupAttributes(shaderInfo.program);
+            }
+        });
+
+        this.currentProgram = this.programs.get('default').program;
+    }
+
+    setupShaderAttributes(program) {
+        const shaderInfo = this.programs.get(this.currentShaderType);
+        if (shaderInfo.needsLighting) {
+            // Set up normal attribute
+            this.gl.bindBuffer(this.gl.ARRAY_BUFFER, normalBuffer);
+            this.gl.vertexAttribPointer(
+                shaderInfo.program.normalAttribute,
+                3,
+                this.gl.FLOAT,
+                false,
+                0,
+                0
+            );
+            this.gl.enableVertexAttribArray(shaderInfo.program.normalAttribute);
+            
+            // Update light position
+            this.gl.uniform3fv(shaderInfo.program.lightPositionUniform, this.lightPosition);
+        }
+    }
+
+    setupEventListeners() {
+        const shaderSelect = document.getElementById('shaderSelect');
+        shaderSelect.addEventListener('change', (e) => {
+            this.switchShader(e.target.value);
+        });
+    }
+
+    switchShader(shaderType) {
+        const shaderProgram = this.programs.get(shaderType);
+        if (shaderProgram) {
+            this.currentShaderType = shaderType;
+            this.currentProgram = shaderProgram.program;
+            this.pendingShaderSwitch = true;
+        }
+    }
+
+    getCurrentProgram() {
+        return this.currentProgram;
+    }
+
+    shouldPreserveColor() {
+        const program = this.programs.get(this.currentShaderType);
+        return program.preserveColor !== false;
+    }
+
+    isWireframe() {
+        return this.currentShaderType === 'wireframe';
+    }
+
+    checkPendingSwitch() {
+        if (this.pendingShaderSwitch) {
+            this.pendingShaderSwitch = false;
+            return true;
+        }
+        return false;
+    }
+}
+
+// Initialize shader manager globally
+const shaderManager = new ShaderManager(gl);
+
 // Animation control flag
 let animationPaused = false;
 
@@ -1014,102 +1306,78 @@ let animationPaused = false;
  * Handles the complete rendering pipeline for the 3D scene including grid and cubes.
  * This function is called recursively through requestAnimationFrame to create smooth animation.
  * 
- * Rendering Pipeline Stages:
- * 1. Frame Setup
- *    - Check animation state
- *    - Clear buffers
- *    - Setup 3D environment
- * 
- * 2. Grid Rendering
- *    - Set grid shader program
- *    - Apply camera transformation
- *    - Draw reference grid
- * 
- * 3. Cube Rendering (For each cube)
- *    - Update colors and animations
- *    - Apply transformations
- *    - Handle collisions and boundaries
- *    - Render faces and edges
- * 
- * Performance Considerations:
- * - Uses depth testing for correct 3D rendering
- * - Minimizes state changes in WebGL context
- * - Optimizes matrix calculations
- * - Handles shader switching efficiently
- * 
- * Global Dependencies:
- * @requires gl - WebGL context
- * @requires buffers - WebGL buffer objects
- * @requires shaderProgram - Main shader program
- * @requires shaderProgramEdges - Edge shader program
- * @requires positions - Cube positions
- * @requires colors - Cube colors
- * @requires angles - Rotation angles
- * @requires directions - Movement vectors
- * @requires boundary - Movement boundaries
- * 
- * Animation Control:
- * - Checks animationPaused flag
- * - Uses requestAnimationFrame for timing
- * - Calculates elapsed time for animations
+ * The function implements shader switching functionality and supports multiple visualization modes:
+ * - Default shading with color transitions
+ * - Phong lighting for realistic shading
+ * - Toon shading for cel-shaded effect
+ * - Wireframe visualization for structural view
  */
 function render() {
-    // Animation state check
+    // Check animation state to pause rendering if needed
     if (animationPaused) return;
 
+    // Update spatial partitioning for collision detection
     spatialGrid.updateGrid();
 
     // ---- Stage 1: Frame Setup ----
-    // Clear to white background and reset depth buffer
+    // Clear the scene with white background and reset depth buffer
     gl.clearColor(1.0, 1.0, 1.0, 1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST);  // Enable 3D depth sorting
 
-    // Calculate animation time in seconds
+    // Calculate time for animations and get current view matrices
     const currentTime = (Date.now() - startTime) * 0.001;
-
-    // Get current camera view matrix
     const cameraMatrix = updateModelViewMatrix();
-
     const projectionMatrix = projectionManager.getCurrentMatrix();
-    
-    // ---- Stage 2: Grid Rendering ----
-    // Setup grid shader and buffers
-    gl.useProgram(shaderProgramEdges);
-    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.gridVertexBuffer);
-    initAttributes(gl, shaderProgramEdges);
 
-    // Create and apply grid transformation
+    // ---- Stage 2: Grid Rendering ----
+    // Setup and render the reference grid using wireframe shader
+    const gridProgram = shaderManager.programs.get('wireframe').program;
+    gl.useProgram(gridProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffers.gridVertexBuffer);
+    initAttributes(gl, gridProgram);
+
+    // Create and apply grid transformation matrix
     const gridModelViewMatrix = mat4.create();
     mat4.multiply(gridModelViewMatrix, cameraMatrix, mat4.create());
 
-    // Set grid shader uniforms
+    // Set grid shader uniforms for transformation
     gl.uniformMatrix4fv(
-        gl.getUniformLocation(shaderProgramEdges, "uModelViewMatrix"),
+        gl.getUniformLocation(gridProgram, "uModelViewMatrix"),
         false,
         gridModelViewMatrix
     );
     gl.uniformMatrix4fv(
-        gl.getUniformLocation(shaderProgramEdges, "uProjectionMatrix"),
+        gl.getUniformLocation(gridProgram, "uProjectionMatrix"),
         false,
         projectionMatrix
     );
 
-    // Render grid
+    // Render grid lines
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.gridIndexBuffer);
     gl.drawElements(gl.LINES, gridIndices.length, gl.UNSIGNED_SHORT, 0);
 
     // ---- Stage 3: Cube Rendering ----
+    // Iterate through each cube in the scene
     for (let i = 0; i < positions.length; i++) {
         const color = colors[i];
         updateColorTransition(color);  // Handle color animation
 
-        // Setup cube shader program
-        gl.useProgram(shaderProgram);
+        // Set up shader program and attributes
+        const currentProgram = shaderManager.getCurrentProgram();
+        gl.useProgram(currentProgram);
         gl.bindBuffer(gl.ARRAY_BUFFER, buffers.vertexBuffer);
-        initAttributes(gl, shaderProgram);
+        initAttributes(gl, currentProgram);
 
-        // Create cube transformation matrix
+        // Configure lighting attributes for advanced shaders
+        if (shaderManager.programs.get(shaderManager.currentShaderType).needsLighting) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+            const normalAttrib = gl.getAttribLocation(currentProgram, 'aNormal');
+            gl.vertexAttribPointer(normalAttrib, 3, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(normalAttrib);
+        }
+
+        // Create model transformation matrix
         const modelMatrix = mat4.create();
         // Position
         mat4.translate(modelMatrix, modelMatrix, [
@@ -1123,11 +1391,11 @@ function render() {
         mat4.rotateY(modelMatrix, modelMatrix, angles[i]);
         mat4.rotateX(modelMatrix, modelMatrix, angles[i] * 0.5);
 
-        // Combine with camera view
+        // Combine with camera view matrix
         const modelViewMatrix = mat4.create();
         mat4.multiply(modelViewMatrix, cameraMatrix, modelMatrix);
 
-        // Physics and animation updates
+        // Update physics and animation
         checkCollisions(i);  // Check for collisions with other cubes
 
         // Update cube properties
@@ -1136,63 +1404,83 @@ function render() {
         positions[i].y += directions[i].dy;  // Position Y
         positions[i].z += directions[i].dz;  // Position Z
 
-        // Boundary collision checks
+        // Handle boundary collisions
         if (positions[i].x > boundary.x || positions[i].x < -boundary.x) 
-            directions[i].dx *= -1;
+            directions[i].dx *= -1;  // Reverse X direction
         if (positions[i].y > boundary.y || positions[i].y < -boundary.y) 
-            directions[i].dy *= -1;
+            directions[i].dy *= -1;  // Reverse Y direction
         if (positions[i].z > -0.5 || positions[i].z < boundary.z) 
-            directions[i].dz *= -1;
+            directions[i].dz *= -1;  // Reverse Z direction
 
         // Set shader uniforms for animation and transformation
-        const timeLocation = gl.getUniformLocation(shaderProgram, "uTime");
+        const timeLocation = gl.getUniformLocation(currentProgram, "uTime");
         if (timeLocation) {
             gl.uniform1f(timeLocation, currentTime);
         }
 
-        // Apply transformation matrices
         gl.uniformMatrix4fv(
-            gl.getUniformLocation(shaderProgram, "uModelViewMatrix"),
+            gl.getUniformLocation(currentProgram, "uModelViewMatrix"),
             false,
             modelViewMatrix
         );
         gl.uniformMatrix4fv(
-            gl.getUniformLocation(shaderProgram, "uProjectionMatrix"),
-            false,
-            projectionMatrix
-        );
-        
-        // Set color uniform
-        gl.uniform4fv(
-            gl.getUniformLocation(shaderProgram, "uColor"),
-            color.current
-        );
-
-        // Render cube faces
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.faceIndexBuffer);
-        gl.drawElements(gl.TRIANGLES, faceIndices.length, gl.UNSIGNED_SHORT, 0);
-
-        // Render cube edges with edge shader
-        gl.useProgram(shaderProgramEdges);
-        initAttributes(gl, shaderProgramEdges);
-        gl.uniformMatrix4fv(
-            gl.getUniformLocation(shaderProgramEdges, "uModelViewMatrix"),
-            false,
-            modelViewMatrix
-        );
-        gl.uniformMatrix4fv(
-            gl.getUniformLocation(shaderProgramEdges, "uProjectionMatrix"),
+            gl.getUniformLocation(currentProgram, "uProjectionMatrix"),
             false,
             projectionMatrix
         );
 
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.edgeIndexBuffer);
-        gl.drawElements(gl.LINES, edgeIndices.length, gl.UNSIGNED_SHORT, 0);
+        // Handle different rendering modes
+        if (shaderManager.isWireframe()) {
+            // Wireframe mode rendering setup
+            gl.enable(gl.CULL_FACE);  // Enable face culling for wireframe
+            gl.cullFace(gl.BACK);     // Cull back faces
+            gl.enable(gl.POLYGON_OFFSET_FILL);  // Enable polygon offset
+            gl.polygonOffset(1.0, 1.0);  // Set offset parameters
+            
+            // Draw only edges for wireframe visualization
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.edgeIndexBuffer);
+            gl.drawElements(gl.LINES, edgeIndices.length, gl.UNSIGNED_SHORT, 0);
+            
+            // Restore render states
+            gl.disable(gl.POLYGON_OFFSET_FILL);
+            gl.disable(gl.CULL_FACE);
+        } else {
+            // Standard rendering mode
+            // Set color for non-wireframe modes
+            gl.uniform4fv(
+                gl.getUniformLocation(currentProgram, "uColor"),
+                color.current
+            );
+            
+            // Render cube faces
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.faceIndexBuffer);
+            gl.drawElements(gl.TRIANGLES, faceIndices.length, gl.UNSIGNED_SHORT, 0);
+
+            // Add edge lines for better visual definition
+            const edgeProgram = shaderManager.programs.get('wireframe').program;
+            gl.useProgram(edgeProgram);
+            initAttributes(gl, edgeProgram);
+            gl.uniformMatrix4fv(
+                gl.getUniformLocation(edgeProgram, "uModelViewMatrix"),
+                false,
+                modelViewMatrix
+            );
+            gl.uniformMatrix4fv(
+                gl.getUniformLocation(edgeProgram, "uProjectionMatrix"),
+                false,
+                projectionMatrix
+            );
+
+            // Draw edges
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.edgeIndexBuffer);
+            gl.drawElements(gl.LINES, edgeIndices.length, gl.UNSIGNED_SHORT, 0);
+        }
     }
 
-    // Schedule next frame
-    requestAnimationFrame(render);
+    // Schedule next frame if animation is active
+    if (!animationPaused) {
+        requestAnimationFrame(render);
+    }
 }
-
 // Start the animation
 render();
