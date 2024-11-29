@@ -30,6 +30,10 @@ document.getElementById("phiSlider").addEventListener("input", (e) => {
     phi = parseFloat(e.target.value);
 });
 
+document.getElementById("projectionSelect").addEventListener("change", (e) => {
+    projectionManager.setProjectionType(e.target.value);
+});
+
 // WebGL Setup Section
 // Initialize WebGL context and canvas
 const canvas = document.getElementById("glCanvas");
@@ -928,9 +932,79 @@ function updateModelViewMatrix() {
     return modelViewMatrix;
 }
 
+class ProjectionManager {
+    constructor(gl, canvas) {
+        this.gl = gl;
+        this.canvas = canvas;
+        this.currentType = 'perspective';
+        
+        this.matrices = {
+            perspective: mat4.create(),
+            orthographic: mat4.create(),
+            oblique: mat4.create()
+        };
+        
+        this.updateProjection();
+    }
+    
+    updateProjection() {
+        const aspect = this.canvas.width / this.canvas.height;
+        
+        // Perspective (original style)
+        mat4.perspective(
+            this.matrices.perspective,
+            Math.PI / 4,
+            aspect,
+            0.1,
+            50.0
+        );
+        
+        // Orthographic
+        const orthoSize = 5.0;
+        mat4.ortho(
+            this.matrices.orthographic,
+            -orthoSize * aspect,
+            orthoSize * aspect,
+            -orthoSize,
+            orthoSize,
+            0.1,
+            50.0
+        );
+        
+        // Oblique (cabinet projection)
+        const obliqueMatrix = mat4.create();
+        mat4.ortho(
+            obliqueMatrix,
+            -orthoSize * aspect,
+            orthoSize * aspect,
+            -orthoSize,
+            orthoSize,
+            0.1,
+            50.0
+        );
+        
+        const alpha = Math.PI / 4;
+        const phi = Math.PI / 4;
+        const shearMatrix = mat4.create();
+        shearMatrix[8] = -1/Math.tan(alpha) * Math.cos(phi);
+        shearMatrix[9] = -1/Math.tan(alpha) * Math.sin(phi);
+        
+        mat4.multiply(this.matrices.oblique, obliqueMatrix, shearMatrix);
+    }
+    
+    setProjectionType(type) {
+        if (this.matrices[type]) {
+            this.currentType = type;
+        }
+    }
+    
+    getCurrentMatrix() {
+        return this.matrices[this.currentType];
+    }
+}
+
 // Set up perspective projection matrix
-const projectionMatrix = mat4.create();
-mat4.perspective(projectionMatrix, Math.PI / 4, canvas.width / canvas.height, 0.1, 50.0);
+const projectionManager = new ProjectionManager(gl, canvas);
 
 // Animation control flag
 let animationPaused = false;
@@ -997,6 +1071,8 @@ function render() {
     // Get current camera view matrix
     const cameraMatrix = updateModelViewMatrix();
 
+    const projectionMatrix = projectionManager.getCurrentMatrix();
+    
     // ---- Stage 2: Grid Rendering ----
     // Setup grid shader and buffers
     gl.useProgram(shaderProgramEdges);
